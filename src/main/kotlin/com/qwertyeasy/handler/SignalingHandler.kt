@@ -8,7 +8,7 @@ import org.springframework.web.socket.handler.TextWebSocketHandler
 @Component
 class SignalingHandler : TextWebSocketHandler() {
 
-  private final Set<WebSocketSession>
+  private final Set<WebSocketSession> = ConcurrentHashSet<>()
 
   override fun handleTextMessage(session: WebSocketSession, message: TextMessage) {
     super.handleTextMessage(session, message)
