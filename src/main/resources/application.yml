@@ -1,3 +1,8 @@
 spring:
   application:
     name: no-echo-circuit
+  profiles:
+    active: local
+
+server:
+  port: 8888
