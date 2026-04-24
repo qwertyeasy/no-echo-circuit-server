@@ -2,16 +2,21 @@ package com.qwertyeasy.service
 
 import com.qwertyeasy.data.entity.User
 import com.qwertyeasy.data.entity.enums.StatusEnum
+import java.util.Optional
 
 interface UserService {
 
-    fun saveNewUser(nickname: String): User
-
     fun getUser(nickname: String): User
+
+    fun findUser(nickname: String): Optional<User>
+
+    fun isOnline(nickname: String): Boolean
 
     fun changeUserStatus(nickname: String, status: StatusEnum)
 
-    fun deleteUser(nickname: String)
+    fun addCrewMemberToUser(user: User, friendNickname: String): Boolean
 
-    fun addCrewMemberToUser(userNickname: String, friendNickname: String)
+    fun removeCrewMember(user: User, removeNickname: String)
+
+    fun findOnlineCrewMembers(user: User) : List<User>
 }
