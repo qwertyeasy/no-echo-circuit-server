@@ -4,6 +4,7 @@ import com.qwertyeasy.data.dto.SessionData
 import com.qwertyeasy.data.dto.SocketMessage
 import com.qwertyeasy.data.entity.enums.StatusEnum
 import com.qwertyeasy.service.UserService
+import jakarta.annotation.PreDestroy
 import org.springframework.stereotype.Component
 import org.springframework.web.socket.CloseStatus
 import org.springframework.web.socket.TextMessage
@@ -19,6 +20,13 @@ class SignalingHandler(
     private val messageProcessor: MessageProcessor,
     private val objectMapper: ObjectMapper
 ): TextWebSocketHandler() {
+
+    @PreDestroy
+    private fun closeOpenSessions(){
+        sessionsMap.entries
+            .map { (key, _) -> key }
+            .forEach { session -> session.close(CloseStatus.SERVER_ERROR) }
+    }
 
     private val log = Logger.getLogger(SignalingHandler::class.java.name)
     private val sessionsMap = ConcurrentHashMap<WebSocketSession, SessionData>()

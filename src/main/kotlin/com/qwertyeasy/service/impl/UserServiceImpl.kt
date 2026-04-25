@@ -40,41 +40,51 @@ class UserServiceImpl (
         return user.status == StatusEnum.ONLINE
     }
 
-    override fun addCrewMemberToUser(user: User, friendNickname: String): Boolean {
+    override fun changeUserStatus(nickname: String, status: StatusEnum) {
+        val user = getUser(nickname)
+        user.status = status
+        userRepository.save(user)
+    }
+
+    override fun addCrewMemberToUser(user: User, friendNickname: String, description: String?): Boolean {
         val friend = findUser(friendNickname)
         if(friend.isPresent) {
             user.crewNames.add(friendNickname)
             userRepository.save(user)
 
-            notifyMemberAboutUser(friend.get().nickname, user.nickname)
+            notifyMemberAboutUser(friend.get(), user.nickname, description)
             return true
         }
         return false
-        // продумать возврат другу уведомления о том, что его добавил такой то человек
-        // возможно сразу после добавления проверка о том, есть ли у искомого человека тот, который запросил
-        // если нет, то передаем в redis, что такого то пользователя надо уведомить о том, что на него подписался такой-то человек
-        // и спросить, хочет ли он добавить его в ответ
-        // в любом случае после запись удаляется
     }
 
-    private fun notifyMemberAboutUser(member: String, user: String){
-        // преждевременно надо добавить проверку
-        // может быть этот пользователь уже добавлен в друзья с обратной стороны
-
-        val notifications = notificationRepository.findById(member)
-                .getOrElse{ AddNotification(member) }
-            notifications.notifyAbout.add(user)
+    private fun notifyMemberAboutUser(member: User, user: String, description: String?){
+        if(!member.crewNames.contains(user)) {
+            val notifications = notificationRepository.findById(member.nickname)
+                .getOrElse { AddNotification(member.nickname) }
+            val notifyMessage = if(description != null){
+                                    "$user:$description"
+                                } else { user }
+            notifications.notifyAbout.add(notifyMessage)
             notificationRepository.save(notifications)
-
-        TODO()
-        // нужно добавить функцию после которой залогинившийся пользователь будет искать
-        // записи в таблице нотификаций и узнавать о добавлении в список другим человеком
+        }
     }
 
     override fun removeCrewMember(user: User, removeNickname: String) {
         if(user.crewNames.contains(removeNickname)){
             user.crewNames.remove(removeNickname)
         }
+    }
+
+    override fun checkNotifications(nickname: String): Set<String> {
+        val notificationsOpt = notificationRepository.findById(nickname)
+        if(notificationsOpt.isPresent){
+            // может быть здесь не нужно удалять их сразу, но пока пусть будет так
+            // в случае чего потом можно настроить очистку уведомления только после решения пользователя
+            notificationRepository.deleteById(nickname)
+            return notificationsOpt.get().notifyAbout
+        }
+        return emptySet()
     }
 
     /**
@@ -88,11 +98,5 @@ class UserServiceImpl (
             .filter { user -> user.status == StatusEnum.ONLINE &&
                     user.crewNames.contains(originNick)
             }
-    }
-
-    override fun changeUserStatus(nickname: String, status: StatusEnum) {
-        val user = getUser(nickname)
-        user.status = status
-        userRepository.save(user)
     }
 }

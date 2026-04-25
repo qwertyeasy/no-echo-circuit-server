@@ -6,3 +6,10 @@ spring:
 
 server:
   port: 8888
+
+## нужно настроить установку ttl по этим значениям
+redis:
+  ttl:
+    user-days: 45
+    notification-days: 10
+    status-mins: 10

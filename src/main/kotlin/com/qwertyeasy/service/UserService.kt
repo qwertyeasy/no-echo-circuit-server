@@ -14,9 +14,11 @@ interface UserService {
 
     fun changeUserStatus(nickname: String, status: StatusEnum)
 
-    fun addCrewMemberToUser(user: User, friendNickname: String): Boolean
+    fun addCrewMemberToUser(user: User, friendNickname: String, description: String?): Boolean
 
     fun removeCrewMember(user: User, removeNickname: String)
 
-    fun findOnlineCrewMembers(user: User) : List<User>
+    fun checkNotifications(nickname: String): Set<String>
+
+    fun findOnlineCrewMembers(user: User): List<User>
 }

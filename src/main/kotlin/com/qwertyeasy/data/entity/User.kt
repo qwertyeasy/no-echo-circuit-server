@@ -3,11 +3,10 @@ package com.qwertyeasy.data.entity
 import com.qwertyeasy.data.entity.enums.StatusEnum
 import org.springframework.data.annotation.Id
 import org.springframework.data.redis.core.RedisHash
-import org.springframework.data.redis.core.TimeToLive
 import java.time.Instant
-import java.util.concurrent.TimeUnit
 
-@RedisHash
+// TODO настраивать ttl пользователя и статуса вручную через redisTemplate (45 дней и 10 минут?)
+@RedisHash("users:profile")
 class User(
 
     @Id val nickname: String,
@@ -18,8 +17,5 @@ class User(
 
     val crewNames: MutableSet<String> = mutableSetOf(),
 
-    val fingerprints: MutableList<DeviceFingerprint> = mutableListOf(),
-
-    @TimeToLive(unit = TimeUnit.DAYS)
-    val ttl: Long = 45,
+    val fingerprints: MutableList<DeviceFingerprint> = mutableListOf()
 )

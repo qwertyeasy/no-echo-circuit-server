@@ -61,7 +61,17 @@ class MessageProcessor(
         sessions[session]?.user = user
         session.sendMessage(TextMessage("Login with nickname: ${user.nickname}"))
 
+        sendNotifications(user, session)
         sendOnlineUserList(user, session)
+    }
+
+    private fun sendNotifications(
+        user: User, session: WebSocketSession
+    ){
+        val notifySet = userService.checkNotifications(user.nickname)
+        if(notifySet.isNotEmpty()){
+            session.sendMessage(TextMessage(notifySet.toString()))
+        }
     }
 
     private fun sendOnlineUserList(
@@ -79,15 +89,23 @@ class MessageProcessor(
         sessions: Map<WebSocketSession, SessionData>
     ){
         val user = sessions[session]?.user
+
+        val split = socketMsg.payload!!.split(":")
+        val addingUser = split[0]
+        val description = if(split.size == 2){
+            split[1]
+        } else { null }
+
         if (user != null) {
-            log.info("User ${user.nickname} is trying to add user with name ${socketMsg.payload}")
-            val isAdded = userService.addCrewMemberToUser(user, socketMsg.payload!!)
+            log.info("User ${user.nickname} is trying to add user with name ${addingUser}")
+            val isAdded = userService.addCrewMemberToUser(user, addingUser, description)
+
             if (isAdded) {
-                log.info("User ${socketMsg.payload} successfully added to your contacts")
-                session.sendMessage(TextMessage("User ${socketMsg.payload} was added to your contacts"))
+                log.info("User ${addingUser} successfully added to your contacts")
+                session.sendMessage(TextMessage("User ${addingUser} was added to your contacts"))
             } else {
-                log.warning("Adding user ${socketMsg.payload} not exist")
-                session.sendMessage(TextMessage("User ${socketMsg.payload} was not found"))
+                log.warning("Adding user ${addingUser} not exist")
+                session.sendMessage(TextMessage("User ${addingUser} was not found"))
             }
         } else {
             log.warning("User is trying to add another user without login")
