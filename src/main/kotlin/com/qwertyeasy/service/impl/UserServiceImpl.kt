@@ -2,57 +2,52 @@ package com.qwertyeasy.service.impl
 
 import com.qwertyeasy.data.entity.AddNotification
 import com.qwertyeasy.data.entity.User
-import com.qwertyeasy.data.entity.enums.StatusEnum
 import com.qwertyeasy.repository.NotificationRepository
 import com.qwertyeasy.repository.UserRepository
+import com.qwertyeasy.service.RedisTtlService
+import com.qwertyeasy.service.SessionService
 import com.qwertyeasy.service.UserService
 import org.springframework.stereotype.Service
+import org.springframework.web.socket.TextMessage
 import java.time.Instant
-import java.util.Optional
 import kotlin.jvm.optionals.getOrElse
+import kotlin.jvm.optionals.getOrNull
 
 @Service
 class UserServiceImpl (
     private val userRepository: UserRepository,
-    private val notificationRepository: NotificationRepository
+    private val notificationRepository: NotificationRepository,
+    private val sessionService: SessionService,
+    private val redisTtlService: RedisTtlService
 ): UserService{
 
-    override fun getUser(nickname: String): User {
-        val userOpt = findUser(nickname)
+    override fun getOrCreate(nickname: String): User {
+        var user = findUser(nickname)
 
-        val user = if(userOpt.isPresent){
-            val user = userOpt.get()
+        if(user != null){
             user.lastConnect = Instant.now()
-            user.status = StatusEnum.ONLINE
-            user
         } else {
-            User(nickname)
+            user = User(nickname)
         }
-        return userRepository.save(user)
-    }
-
-    override fun findUser(nickname: String): Optional<User> {
-        return userRepository.findById(nickname)
-    }
-
-    override fun isOnline(nickname: String): Boolean {
-        val user = findUser(nickname).get()
-        return user.status == StatusEnum.ONLINE
-    }
-
-    override fun changeUserStatus(nickname: String, status: StatusEnum) {
-        val user = getUser(nickname)
-        user.status = status
         userRepository.save(user)
+        redisTtlService.markUserAsActive(user.nickname)
+
+        return user
+    }
+
+    override fun findUser(nickname: String): User? {
+        return userRepository.findById(nickname).getOrNull()
     }
 
     override fun addCrewMemberToUser(user: User, friendNickname: String, description: String?): Boolean {
         val friend = findUser(friendNickname)
-        if(friend.isPresent) {
+        if(friend != null) {
             user.crewNames.add(friendNickname)
-            userRepository.save(user)
 
-            notifyMemberAboutUser(friend.get(), user.nickname, description)
+            userRepository.save(user)
+            redisTtlService.markUserAsActive(user.nickname)
+
+            notifyMemberAboutUser(friend, user.nickname, description)
             return true
         }
         return false
@@ -60,22 +55,37 @@ class UserServiceImpl (
 
     private fun notifyMemberAboutUser(member: User, user: String, description: String?){
         if(!member.crewNames.contains(user)) {
-            val notifications = notificationRepository.findById(member.nickname)
-                .getOrElse { AddNotification(member.nickname) }
-            val notifyMessage = if(description != null){
-                                    "$user:$description"
-                                } else { user }
-            notifications.notifyAbout.add(notifyMessage)
-            notificationRepository.save(notifications)
+            // может быть пересмотреть работу с нотификациями, чтобы вынести прямую работу с сессиями из этого класса
+            val memberSession = sessionService.findSessionByNickname(member.nickname)
+
+            if(memberSession.isPresent && redisTtlService.isUserOnline(member.nickname)){
+                val message = if(description != null) {"${user}:${description}"} else { user }
+                memberSession.get().sendMessage(TextMessage("Your contact was saved: ${message}"))
+
+            } else {
+                val notifications = notificationRepository.findById(member.nickname)
+                    .getOrElse { AddNotification(member.nickname) }
+                val notifyMessage = if (description != null) {
+                    "$user:$description"
+                } else {
+                    user
+                }
+                notifications.notifyAbout.add(notifyMessage)
+
+                notificationRepository.save(notifications)
+                redisTtlService.renewNotificationTtl(member.nickname)
+            }
         }
     }
 
     override fun removeCrewMember(user: User, removeNickname: String) {
         if(user.crewNames.contains(removeNickname)){
             user.crewNames.remove(removeNickname)
+            // TODO: пользователя нужно сохранить перед выходом из метода?
         }
     }
 
+    // TODO: перевести findById с Optional на ?
     override fun checkNotifications(nickname: String): Set<String> {
         val notificationsOpt = notificationRepository.findById(nickname)
         if(notificationsOpt.isPresent){
@@ -92,11 +102,10 @@ class UserServiceImpl (
      * Only in this coincidence they can see each other online in friends list.
      */
     override fun findOnlineCrewMembers(user: User): List<User> {
-        val originNick = user.nickname
-        val crewNames = user.crewNames
-        return userRepository.findAllById(crewNames)
-            .filter { user -> user.status == StatusEnum.ONLINE &&
-                    user.crewNames.contains(originNick)
+        return userRepository.findAllById(user.crewNames)
+            .filter { user ->
+                redisTtlService.isUserOnline(user.nickname) &&
+                user.crewNames.contains(user.nickname)
             }
     }
 }

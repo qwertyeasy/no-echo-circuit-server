@@ -1,9 +1,10 @@
 package com.qwertyeasy.wshandler
 
 import com.qwertyeasy.data.dto.MessageType
-import com.qwertyeasy.data.dto.SessionData
 import com.qwertyeasy.data.dto.SocketMessage
 import com.qwertyeasy.data.entity.User
+import com.qwertyeasy.service.RedisTtlService
+import com.qwertyeasy.service.SessionService
 import com.qwertyeasy.service.UserService
 import org.springframework.stereotype.Component
 import org.springframework.web.socket.TextMessage
@@ -12,28 +13,28 @@ import java.util.logging.Logger
 
 @Component
 class MessageProcessor(
-    private val userService: UserService
+    private val userService: UserService,
+    private val sessionService: SessionService,
+    private val redisTtlService: RedisTtlService
 ) {
     private val log = Logger.getLogger(MessageProcessor::class.java.name)
 
     fun handleMessageByType(
-        socketMsg: SocketMessage, session: WebSocketSession,
-        sessions: Map<WebSocketSession, SessionData>
+        socketMsg: SocketMessage, session: WebSocketSession
     ) {
         when (socketMsg.type) {
-            MessageType.AUTH -> handleAuthMessage(socketMsg, session, sessions)
-            MessageType.ADD -> handleAddMessage(socketMsg, session, sessions)
-            MessageType.REMOVE -> handleRemoveMessage(socketMsg, session, sessions)
-            MessageType.CONNECT -> handleConnectMessage(socketMsg, session, sessions)
-            MessageType.SCAN -> handleScanMessage(session, sessions)
+            MessageType.AUTH -> handleAuthMessage(socketMsg, session)
+            MessageType.ADD -> handleAddMessage(socketMsg, session)
+            MessageType.REMOVE -> handleRemoveMessage(socketMsg, session)
+            MessageType.CONNECT -> handleConnectMessage(socketMsg, session)
+            MessageType.SCAN -> handleScanMessage(session)
         }
     }
 
     private fun handleRemoveMessage(
-        socketMsg: SocketMessage, session: WebSocketSession,
-        sessions: Map<WebSocketSession, SessionData>
+        socketMsg: SocketMessage, session: WebSocketSession
     ){
-        val data = sessions[session]
+        val data = sessionService.getDataFromSession(session)
         if(data!!.user != null) {
             userService.removeCrewMember(data.user!!, socketMsg.payload!!)
         } else {
@@ -42,9 +43,9 @@ class MessageProcessor(
     }
 
     private fun handleScanMessage(
-        session: WebSocketSession, sessions: Map<WebSocketSession, SessionData>
+        session: WebSocketSession
     ) {
-        val data = sessions[session]
+        val data = sessionService.getDataFromSession(session)
         if(data!!.user != null){
             sendOnlineUserList(data.user!!, session)
         } else {
@@ -53,12 +54,12 @@ class MessageProcessor(
     }
 
     private fun handleAuthMessage(
-        socketMsg: SocketMessage, session: WebSocketSession,
-        sessions: Map<WebSocketSession, SessionData>
+        socketMsg: SocketMessage, session: WebSocketSession
     ){
-        val user = userService.getUser(socketMsg.payload!!)
+        val user = userService.getOrCreate(socketMsg.payload!!)
+        sessionService.saveSessionWithUser(session, user)
+
         log.info("User ${user.nickname} was login")
-        sessions[session]?.user = user
         session.sendMessage(TextMessage("Login with nickname: ${user.nickname}"))
 
         sendNotifications(user, session)
@@ -70,7 +71,7 @@ class MessageProcessor(
     ){
         val notifySet = userService.checkNotifications(user.nickname)
         if(notifySet.isNotEmpty()){
-            session.sendMessage(TextMessage(notifySet.toString()))
+            session.sendMessage(TextMessage("Your contact was saved: ${notifySet.toString()}"))
         }
     }
 
@@ -85,10 +86,9 @@ class MessageProcessor(
     }
 
     private fun handleAddMessage(
-        socketMsg: SocketMessage, session: WebSocketSession,
-        sessions: Map<WebSocketSession, SessionData>
+        socketMsg: SocketMessage, session: WebSocketSession
     ){
-        val user = sessions[session]?.user
+        val user = sessionService.getUserFromSession(session)
 
         val split = socketMsg.payload!!.split(":")
         val addingUser = split[0]
@@ -114,15 +114,18 @@ class MessageProcessor(
     }
 
     private fun handleConnectMessage(
-        socketMsg: SocketMessage, session: WebSocketSession,
-        sessions: Map<WebSocketSession, SessionData>
+        socketMsg: SocketMessage, session: WebSocketSession
     ){
-        val secondSession = if(userService.isOnline(socketMsg.payload!!)) {
-                sessions.filterValues { data -> data.user?.nickname.equals(socketMsg.payload) }
-            // тут надо настроить правильную фильтрацию
+        if(redisTtlService.isUserOnline(socketMsg.payload!!)) {
+            val secondSession = sessionService.findSessionByNickname(socketMsg.payload).get()
+
+            session.sendMessage(TextMessage("Запрошена сессия c пользователем ${socketMsg.payload}"))
+            secondSession.sendMessage(TextMessage("С вами пытается связаться пользователь ${sessionService.getUserFromSession(session)!!.nickname}"))
+
+            // проверка прошла успешно, остаётся только обменяться нужными данными между сессиями
         } else {
             log.warning("Somebody requested to connect with not existing user")
         }
-        TODO("Дописать работающий коннект друг к другу - обмен кандидатами для webRTC")
+        // TODO: Дописать работающий коннект друг к другу - обмен кандидатами для webRTC
     }
 }

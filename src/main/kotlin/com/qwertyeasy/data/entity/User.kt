@@ -1,21 +1,32 @@
 package com.qwertyeasy.data.entity
 
-import com.qwertyeasy.data.entity.enums.StatusEnum
 import org.springframework.data.annotation.Id
 import org.springframework.data.redis.core.RedisHash
 import java.time.Instant
 
-// TODO настраивать ttl пользователя и статуса вручную через redisTemplate (45 дней и 10 минут?)
+
+// TODO настроить каким то образом аутентификацию пользователя - нужно будет переписать вход
+//  или же настроить следующее поведение: при входе нового пользователя создается аккаунт(запись в redis)
+//  также сразу же создается уникальный ключ (типа jwt), который вшивается в приложение клиента
+//  самостоятельно установить этот ключ в приложении нельзя, а только посредством подключения
+//  в дальнейшем когда мы входим уже не в первый раз, мы передаем этот JWT аналог для проверки входа
+//  этот код хранится в redis и на устройстве пользователя
+//  при смене пользователем аккаунта проверяется некоторая мапа? и так как для устройства ничего не находит
+//  запрос отправляется без ключа и устройство получает новый ключ
+
+// возможно тогда нужно как-то считать хеш всего приложения и проверять его??
+// нужно настроить какие то проверки, защиты от взлома и установки значений вручную
+
+// ну или положиться на стандарты индустрии и тупо предоставить пользователю запоминать пароли
+// но это скучно, хочется какого-то прорыва
 @RedisHash("users:profile")
 class User(
 
     @Id val nickname: String,
 
-    var status: StatusEnum = StatusEnum.ONLINE,
-
+    // для чего мне нужен lastConnect?
+    // может быть для опроса и отображения в клиенте?
     var lastConnect: Instant = Instant.now(),
 
-    val crewNames: MutableSet<String> = mutableSetOf(),
-
-    val fingerprints: MutableList<DeviceFingerprint> = mutableListOf()
+    val crewNames: MutableSet<String> = mutableSetOf()
 )
