@@ -8,6 +8,21 @@ services:
     restart: unless-stopped
     volumes:
       - redis-data:/data
+    networks:
+      - inner-network
+
+  backend:
+    build: .
+    ports:
+      - "8888:8888"
+    depends_on:
+      - redis
+    networks:
+      - inner-network
 
 volumes:
   redis-data:
+
+networks:
+  inner-network:
+    driver: bridge

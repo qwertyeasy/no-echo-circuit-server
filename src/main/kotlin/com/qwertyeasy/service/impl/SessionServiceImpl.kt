@@ -1,16 +1,22 @@
 package com.qwertyeasy.service.impl
 
+import com.qwertyeasy.data.dto.ResponseMessage
 import com.qwertyeasy.data.dto.SessionData
+import com.qwertyeasy.data.dto.enums.ResponseType
 import com.qwertyeasy.data.entity.User
 import com.qwertyeasy.service.SessionService
 import org.springframework.stereotype.Service
 import org.springframework.web.socket.CloseStatus
+import org.springframework.web.socket.TextMessage
 import org.springframework.web.socket.WebSocketSession
+import tools.jackson.databind.ObjectMapper
 import java.util.Optional
 import java.util.concurrent.ConcurrentHashMap
 
 @Service
-class SessionServiceImpl(): SessionService {
+class SessionServiceImpl(
+    val objectMapper: ObjectMapper
+): SessionService {
 
     val sessionsMap = ConcurrentHashMap<WebSocketSession, SessionData>()
 
@@ -24,6 +30,14 @@ class SessionServiceImpl(): SessionService {
 
     override fun saveSessionWithUser(session: WebSocketSession, user: User) {
         sessionsMap[session] = SessionData(user)
+    }
+
+    override fun sendResponseToSession(
+        session: WebSocketSession, type: ResponseType, payload: String?
+    ) {
+        session.sendMessage(TextMessage(
+            objectMapper.writeValueAsString(ResponseMessage(type, payload))
+        ))
     }
 
     override fun removeSession(session: WebSocketSession) {

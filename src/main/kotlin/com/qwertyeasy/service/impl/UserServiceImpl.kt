@@ -1,5 +1,6 @@
 package com.qwertyeasy.service.impl
 
+import com.qwertyeasy.data.dto.enums.ResponseType
 import com.qwertyeasy.data.entity.AddNotification
 import com.qwertyeasy.data.entity.User
 import com.qwertyeasy.repository.NotificationRepository
@@ -8,7 +9,6 @@ import com.qwertyeasy.service.RedisTtlService
 import com.qwertyeasy.service.SessionService
 import com.qwertyeasy.service.UserService
 import org.springframework.stereotype.Service
-import org.springframework.web.socket.TextMessage
 import java.time.Instant
 import kotlin.jvm.optionals.getOrElse
 import kotlin.jvm.optionals.getOrNull
@@ -56,11 +56,12 @@ class UserServiceImpl (
     private fun notifyMemberAboutUser(member: User, user: String, description: String?){
         if(!member.crewNames.contains(user)) {
             // может быть пересмотреть работу с нотификациями, чтобы вынести прямую работу с сессиями из этого класса
-            val memberSession = sessionService.findSessionByNickname(member.nickname)
+            val memberSessionOpt = sessionService.findSessionByNickname(member.nickname)
 
-            if(memberSession.isPresent && redisTtlService.isUserOnline(member.nickname)){
+            if(memberSessionOpt.isPresent && redisTtlService.isUserOnline(member.nickname)){
                 val message = if(description != null) {"${user}:${description}"} else { user }
-                memberSession.get().sendMessage(TextMessage("Your contact was saved: ${message}"))
+                val session = memberSessionOpt.get()
+                sessionService.sendResponseToSession(session, ResponseType.NOTIFY_ABOUT_ADD, message)
 
             } else {
                 val notifications = notificationRepository.findById(member.nickname)

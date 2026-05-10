@@ -1,13 +1,13 @@
 package com.qwertyeasy.wshandler
 
-import com.qwertyeasy.data.dto.MessageType
+import com.qwertyeasy.data.dto.enums.MessageType
 import com.qwertyeasy.data.dto.SocketMessage
+import com.qwertyeasy.data.dto.enums.ResponseType
 import com.qwertyeasy.data.entity.User
 import com.qwertyeasy.service.RedisTtlService
 import com.qwertyeasy.service.SessionService
 import com.qwertyeasy.service.UserService
 import org.springframework.stereotype.Component
-import org.springframework.web.socket.TextMessage
 import org.springframework.web.socket.WebSocketSession
 import java.util.logging.Logger
 
@@ -38,7 +38,9 @@ class MessageProcessor(
         if(data!!.user != null) {
             userService.removeCrewMember(data.user!!, socketMsg.payload!!)
         } else {
-            session.sendMessage(TextMessage("Have to login before removing"))
+            sessionService.sendResponseToSession(
+                session, ResponseType.ERROR, null
+            )
         }
     }
 
@@ -49,7 +51,9 @@ class MessageProcessor(
         if(data!!.user != null){
             sendOnlineUserList(data.user!!, session)
         } else {
-            session.sendMessage(TextMessage("Have to login before scanning"))
+            sessionService.sendResponseToSession(
+                session, ResponseType.ERROR, null
+            )
         }
     }
 
@@ -60,7 +64,9 @@ class MessageProcessor(
         sessionService.saveSessionWithUser(session, user)
 
         log.info("User ${user.nickname} was login")
-        session.sendMessage(TextMessage("Login with nickname: ${user.nickname}"))
+        sessionService.sendResponseToSession(
+            session, ResponseType.SUCCESS_LOGIN, null
+        )
 
         sendNotifications(user, session)
         sendOnlineUserList(user, session)
@@ -71,7 +77,9 @@ class MessageProcessor(
     ){
         val notifySet = userService.checkNotifications(user.nickname)
         if(notifySet.isNotEmpty()){
-            session.sendMessage(TextMessage("Your contact was saved: ${notifySet.toString()}"))
+            sessionService.sendResponseToSession(
+                session, ResponseType.NOTIFY_ABOUT_ADD, notifySet.toString()
+            )
         }
     }
 
@@ -82,7 +90,9 @@ class MessageProcessor(
         val namesList = onlineMembers.stream()
             .map { user -> user.nickname }
             .toList()
-        session.sendMessage(TextMessage(namesList.toString()))
+        sessionService.sendResponseToSession(
+            session, ResponseType.USERS_LIST, namesList.toString()
+        )
     }
 
     private fun handleAddMessage(
@@ -102,14 +112,20 @@ class MessageProcessor(
 
             if (isAdded) {
                 log.info("User ${addingUser} successfully added to your contacts")
-                session.sendMessage(TextMessage("User ${addingUser} was added to your contacts"))
+                sessionService.sendResponseToSession(
+                    session, ResponseType.ADD_OK, addingUser
+                )
             } else {
                 log.warning("Adding user ${addingUser} not exist")
-                session.sendMessage(TextMessage("User ${addingUser} was not found"))
+                sessionService.sendResponseToSession(
+                    session, ResponseType.ADD_FAIL, addingUser
+                )
             }
         } else {
             log.warning("User is trying to add another user without login")
-            session.sendMessage(TextMessage("Have to login before requesting anyone"))
+            sessionService.sendResponseToSession(
+                session, ResponseType.ERROR, null
+            )
         }
     }
 
@@ -119,8 +135,12 @@ class MessageProcessor(
         if(redisTtlService.isUserOnline(socketMsg.payload!!)) {
             val secondSession = sessionService.findSessionByNickname(socketMsg.payload).get()
 
-            session.sendMessage(TextMessage("Запрошена сессия c пользователем ${socketMsg.payload}"))
-            secondSession.sendMessage(TextMessage("С вами пытается связаться пользователь ${sessionService.getUserFromSession(session)!!.nickname}"))
+//            session.sendMessage(TextMessage("Запрошена сессия c пользователем ${socketMsg.payload}"))
+
+            val connectingNickname = sessionService.getUserFromSession(session)!!.nickname
+            sessionService.sendResponseToSession(
+                secondSession, ResponseType.USER_CONNECTS, connectingNickname
+            )
 
             // проверка прошла успешно, остаётся только обменяться нужными данными между сессиями
         } else {

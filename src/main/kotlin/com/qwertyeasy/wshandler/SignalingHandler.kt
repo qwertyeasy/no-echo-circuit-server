@@ -1,6 +1,7 @@
 package com.qwertyeasy.wshandler
 
 import com.qwertyeasy.data.dto.SocketMessage
+import com.qwertyeasy.data.dto.enums.ResponseType
 import com.qwertyeasy.service.RedisTtlService
 import com.qwertyeasy.service.SessionService
 import jakarta.annotation.PreDestroy
@@ -23,7 +24,7 @@ class SignalingHandler(
     private val log = Logger.getLogger(SignalingHandler::class.java.name)
 
     override fun afterConnectionEstablished(session: WebSocketSession) {
-        session.sendMessage(TextMessage("Connection established"))
+        sessionService.sendResponseToSession(session, ResponseType.SERVER_CONNECT, null)
         log.info("Connection established for session: ${session.id}")
     }
 
