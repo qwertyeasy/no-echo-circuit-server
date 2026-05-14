@@ -1,5 +1,6 @@
 package com.qwertyeasy.service
 
+import com.qwertyeasy.data.dto.NotificationData
 import com.qwertyeasy.data.entity.User
 
 interface UserService {
@@ -12,7 +13,7 @@ interface UserService {
 
     fun removeCrewMember(user: User, removeNickname: String)
 
-    fun checkNotifications(nickname: String): Set<String>
+    fun checkNotifications(nickname: String): Set<NotificationData>
 
     fun findOnlineCrewMembers(user: User): List<User>
 }

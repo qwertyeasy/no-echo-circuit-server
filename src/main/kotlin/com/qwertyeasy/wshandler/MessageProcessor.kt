@@ -1,5 +1,6 @@
 package com.qwertyeasy.wshandler
 
+import com.qwertyeasy.data.dto.NotificationData
 import com.qwertyeasy.data.dto.enums.MessageType
 import com.qwertyeasy.data.dto.SocketMessage
 import com.qwertyeasy.data.dto.enums.ResponseType
@@ -9,13 +10,15 @@ import com.qwertyeasy.service.SessionService
 import com.qwertyeasy.service.UserService
 import org.springframework.stereotype.Component
 import org.springframework.web.socket.WebSocketSession
+import tools.jackson.databind.ObjectMapper
 import java.util.logging.Logger
 
 @Component
 class MessageProcessor(
     private val userService: UserService,
     private val sessionService: SessionService,
-    private val redisTtlService: RedisTtlService
+    private val redisTtlService: RedisTtlService,
+    private val objectMapper: ObjectMapper
 ) {
     private val log = Logger.getLogger(MessageProcessor::class.java.name)
 
@@ -78,7 +81,8 @@ class MessageProcessor(
         val notifySet = userService.checkNotifications(user.nickname)
         if(notifySet.isNotEmpty()){
             sessionService.sendResponseToSession(
-                session, ResponseType.NOTIFY_ABOUT_ADD, notifySet.toString()
+                session, ResponseType.NOTIFY_ABOUT_ADD,
+                objectMapper.writeValueAsString(notifySet)
             )
         }
     }
@@ -86,12 +90,12 @@ class MessageProcessor(
     private fun sendOnlineUserList(
         user: User, session: WebSocketSession
     ){
-        val onlineMembers = userService.findOnlineCrewMembers(user)
-        val namesList = onlineMembers.stream()
-            .map { user -> user.nickname }
-            .toList()
+        val onlineNamesList = userService.findOnlineCrewMembers(user)
+            .map { it.nickname }
+
         sessionService.sendResponseToSession(
-            session, ResponseType.USERS_LIST, namesList.toString()
+            session, ResponseType.USERS_LIST,
+            objectMapper.writeValueAsString(onlineNamesList)
         )
     }
 
@@ -100,14 +104,12 @@ class MessageProcessor(
     ){
         val user = sessionService.getUserFromSession(session)
 
-        val split = socketMsg.payload!!.split(":")
-        val addingUser = split[0]
-        val description = if(split.size == 2){
-            split[1]
-        } else { null }
+        val payload = objectMapper.readValue(socketMsg.payload, NotificationData::class.java)
+        val addingUser = payload.userNickname
+        val description = payload.description
 
         if (user != null) {
-            log.info("User ${user.nickname} is trying to add user with name ${addingUser}")
+            log.info("User ${user.nickname} is trying to add user with name ${payload.userNickname}")
             val isAdded = userService.addCrewMemberToUser(user, addingUser, description)
 
             if (isAdded) {
@@ -133,9 +135,9 @@ class MessageProcessor(
         socketMsg: SocketMessage, session: WebSocketSession
     ){
         if(redisTtlService.isUserOnline(socketMsg.payload!!)) {
-            val secondSession = sessionService.findSessionByNickname(socketMsg.payload).get()
+            log.info("Somebody requested to connect with user: ${socketMsg.payload}")
 
-//            session.sendMessage(TextMessage("Запрошена сессия c пользователем ${socketMsg.payload}"))
+            val secondSession = sessionService.findSessionByNickname(socketMsg.payload).get()
 
             val connectingNickname = sessionService.getUserFromSession(session)!!.nickname
             sessionService.sendResponseToSession(
@@ -144,7 +146,7 @@ class MessageProcessor(
 
             // проверка прошла успешно, остаётся только обменяться нужными данными между сессиями
         } else {
-            log.warning("Somebody requested to connect with not existing user")
+            log.warning("Somebody requested to connect with offline user: ${socketMsg.payload}")
         }
         // TODO: Дописать работающий коннект друг к другу - обмен кандидатами для webRTC
     }
