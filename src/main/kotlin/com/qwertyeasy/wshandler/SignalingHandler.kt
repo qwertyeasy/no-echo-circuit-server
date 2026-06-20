@@ -38,9 +38,8 @@ class SignalingHandler(
     }
 
     override fun handleTextMessage(session: WebSocketSession, message: TextMessage) {
-        val msg = message.payload
-        log.info("Got a message from session ${session.id}: $message")
-        val socketMsg = objectMapper.readValue(msg, SocketMessage::class.java)
+        val socketMsg = objectMapper.readValue(
+            message.payload, SocketMessage::class.java)
 
         messageProcessor.handleMessageByType(socketMsg, session)
     }

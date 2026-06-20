@@ -32,8 +32,7 @@ class UserServiceImpl (
         } else {
             user = User(nickname)
         }
-        userRepository.save(user)
-        redisTtlService.markUserAsActive(user.nickname)
+        saveAndResetUserTtl(user)
 
         return user
     }
@@ -42,13 +41,17 @@ class UserServiceImpl (
         return userRepository.findById(nickname).getOrNull()
     }
 
+    override fun saveAndResetUserTtl(user: User){
+        userRepository.save(user)
+        redisTtlService.markUserAsActive(user.nickname)
+    }
+
     override fun addCrewMemberToUser(user: User, friendNickname: String, description: String?): Boolean {
         val friend = findUser(friendNickname)
         if(friend != null) {
             user.crewNames.add(friendNickname)
 
-            userRepository.save(user)
-            redisTtlService.markUserAsActive(user.nickname)
+            saveAndResetUserTtl(user)
 
             notifyMemberAboutUser(friend, user.nickname, description)
             return true
@@ -85,7 +88,7 @@ class UserServiceImpl (
     override fun removeCrewMember(user: User, removeNickname: String) {
         if(user.crewNames.contains(removeNickname)){
             user.crewNames.remove(removeNickname)
-            // TODO: пользователя нужно сохранить перед выходом из метода?
+            saveAndResetUserTtl(user)
         }
     }
 

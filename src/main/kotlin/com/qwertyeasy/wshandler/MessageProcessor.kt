@@ -31,6 +31,22 @@ class MessageProcessor(
             MessageType.REMOVE -> handleRemoveMessage(socketMsg, session)
             MessageType.CONNECT -> handleConnectMessage(socketMsg, session)
             MessageType.SCAN -> handleScanMessage(session)
+            MessageType.ANSWER -> handleAnswerMessage(socketMsg)
+            MessageType.ICE -> handleIceMessage(socketMsg)
+        }
+    }
+
+    private fun handleIceMessage(
+        socketMsg: SocketMessage
+    ){
+        val payloadJson = objectMapper.readTree(socketMsg.payload)
+        val to = payloadJson["to"].stringValue()
+
+        val sessionTo = sessionService.findSessionByNickname(to)
+        if (sessionTo.isPresent) {
+            sessionService.sendResponseToSession(
+                sessionTo.get(), ResponseType.ICE, socketMsg.payload
+            )
         }
     }
 
@@ -40,6 +56,7 @@ class MessageProcessor(
         val data = sessionService.getDataFromSession(session)
         if(data!!.user != null) {
             userService.removeCrewMember(data.user!!, socketMsg.payload!!)
+            sendOnlineUserList(data.user!!, session)
         } else {
             sessionService.sendResponseToSession(
                 session, ResponseType.ERROR, null
@@ -52,6 +69,7 @@ class MessageProcessor(
     ) {
         val data = sessionService.getDataFromSession(session)
         if(data!!.user != null){
+            log.info("User ${data.user!!.nickname} send online list refreshing request")
             sendOnlineUserList(data.user!!, session)
         } else {
             sessionService.sendResponseToSession(
@@ -113,12 +131,13 @@ class MessageProcessor(
             val isAdded = userService.addCrewMemberToUser(user, addingUser, description)
 
             if (isAdded) {
-                log.info("User ${addingUser} successfully added to your contacts")
+                log.info("User ${user.nickname} successfully added $addingUser to its contacts")
                 sessionService.sendResponseToSession(
                     session, ResponseType.ADD_OK, addingUser
                 )
+                sendOnlineUserList(user, session)
             } else {
-                log.warning("Adding user ${addingUser} not exist")
+                log.warning("Adding user $addingUser not exist")
                 sessionService.sendResponseToSession(
                     session, ResponseType.ADD_FAIL, addingUser
                 )
@@ -131,23 +150,40 @@ class MessageProcessor(
         }
     }
 
+    // 2 шаг - обработка запроса на подключение
     private fun handleConnectMessage(
         socketMsg: SocketMessage, session: WebSocketSession
     ){
-        if(redisTtlService.isUserOnline(socketMsg.payload!!)) {
-            log.info("Somebody requested to connect with user: ${socketMsg.payload}")
+        val requestingUser = objectMapper.readTree(socketMsg.payload)["to"].stringValue()
 
-            val secondSession = sessionService.findSessionByNickname(socketMsg.payload).get()
+        if(redisTtlService.isUserOnline(requestingUser)) {
+            log.info("Somebody requested to connect with user: $requestingUser")
 
-            val connectingNickname = sessionService.getUserFromSession(session)!!.nickname
+            val secondSession = sessionService.findSessionByNickname(requestingUser).get()
             sessionService.sendResponseToSession(
-                secondSession, ResponseType.USER_CONNECTS, connectingNickname
+                secondSession, ResponseType.ANSWER_REQUEST, socketMsg.payload
             )
-
-            // проверка прошла успешно, остаётся только обменяться нужными данными между сессиями
         } else {
-            log.warning("Somebody requested to connect with offline user: ${socketMsg.payload}")
+            sessionService.sendResponseToSession(
+                session, ResponseType.USER_OFFLINE, requestingUser
+            )
+            log.warning("Somebody requested to connect with offline user: $requestingUser")
         }
-        // TODO: Дописать работающий коннект друг к другу - обмен кандидатами для webRTC
+    }
+
+    // 4 шаг - получение ответа и передача его запрашивающему
+    private fun handleAnswerMessage(
+        socketMsg: SocketMessage
+    ){
+        val to = objectMapper.readTree(socketMsg.payload)["to"].stringValue()
+        val receivingSessionOpt = sessionService.findSessionByNickname(to)
+
+        if (receivingSessionOpt.isPresent) {
+            val receivingSession = receivingSessionOpt.get()
+
+            sessionService.sendResponseToSession(
+                receivingSession, ResponseType.ANSWER_RESPONSE, socketMsg.payload
+            )
+        }
     }
 }

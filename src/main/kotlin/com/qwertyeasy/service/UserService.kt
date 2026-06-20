@@ -5,6 +5,8 @@ import com.qwertyeasy.data.entity.User
 
 interface UserService {
 
+    fun saveAndResetUserTtl(user: User)
+
     fun getOrCreate(nickname: String): User
 
     fun findUser(nickname: String): User?
