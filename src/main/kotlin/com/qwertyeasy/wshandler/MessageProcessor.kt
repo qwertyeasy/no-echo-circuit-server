@@ -150,28 +150,38 @@ class MessageProcessor(
         }
     }
 
-    // 2 шаг - обработка запроса на подключение
+    //TODO: понять, нужно ли выполнять двойную проверку - сначала по онлайну, а потом по сессии.
+    // По сути, если сессии корректно очищаются, то не должно возникнуть ситуации,
+    // при которой сессия присутствует, но пользователь не активен.
+
     private fun handleConnectMessage(
         socketMsg: SocketMessage, session: WebSocketSession
     ){
         val requestingUser = objectMapper.readTree(socketMsg.payload)["to"].stringValue()
+        log.info("Somebody requested to connect with user: $requestingUser")
 
-        if(redisTtlService.isUserOnline(requestingUser)) {
-            log.info("Somebody requested to connect with user: $requestingUser")
+//        if(redisTtlService.isUserOnline(requestingUser)) {
 
-            val secondSession = sessionService.findSessionByNickname(requestingUser).get()
-            sessionService.sendResponseToSession(
-                secondSession, ResponseType.ANSWER_REQUEST, socketMsg.payload
-            )
-        } else {
-            sessionService.sendResponseToSession(
-                session, ResponseType.USER_OFFLINE, requestingUser
-            )
-            log.warning("Somebody requested to connect with offline user: $requestingUser")
-        }
+            val secondSessionOpt = sessionService.findSessionByNickname(requestingUser)
+            if (secondSessionOpt.isPresent) {
+                sessionService.sendResponseToSession(
+                    secondSessionOpt.get(),
+                    ResponseType.ANSWER_REQUEST, socketMsg.payload
+                )
+            } else {
+                log.warning("Requested session was not found")
+                sessionService.sendResponseToSession(
+                    session, ResponseType.USER_OFFLINE, requestingUser
+                )
+            }
+//        } else {
+//            log.warning("Somebody requested to connect with offline user: $requestingUser")
+//            sessionService.sendResponseToSession(
+//                session, ResponseType.USER_OFFLINE, requestingUser
+//            )
+//        }
     }
 
-    // 4 шаг - получение ответа и передача его запрашивающему
     private fun handleAnswerMessage(
         socketMsg: SocketMessage
     ){
